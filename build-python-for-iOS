@@ -44,7 +44,7 @@ LIBRARY_NAME_FOR_SIMULATOR="libpython$LIBRARY_VERSION.sim.a"
 # Resource information
 
 PATCH_NAME="Python-$SOURCE_VERSION-xcompile.patch"
-PATCH_URL="http://media.shazhouke.webfactional.com/python_ios/$PATCH_NAME"
+PATCH_URL="https://raw.github.com/wewei/Build-Python-for-iOS/master/$PATCH_NAME"
 
 SOURCE_PACK_NAME="Python-$SOURCE_VERSION.tar.bz2"
 SOURCE_PACK_URL="http://python.org/ftp/python/$SOURCE_VERSION/$SOURCE_PACK_NAME"
