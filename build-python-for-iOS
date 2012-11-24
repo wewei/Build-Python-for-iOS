@@ -1,0 +1,210 @@
+#!/bin/bash
+
+#
+# BRIEF:
+# This script is used to retrieve and build a static library of python interpreter for iOS.
+# 
+# DESCRIPTION:
+# This script retrieves the python source files and cross compile patch from internet, and
+# build a universal (for iphone-os and iphone-simulator) static library, libpythonX.Y.a.
+# The static library contains only the interpreter. In order to the the scripts run, you
+# still need to
+#       * Copy all the headers at $BUILD_FOLDER/Include to your project.
+#       * Copy all the necessary modules at $BUILD_FOLDER/Lib to some place your app can
+#         access at run time, and notify the interpreter about the path with Py_SetPythonHome
+#         before calling Py_Initialize.
+#         If your Python Home is at <py-home>, the modules should be put at
+#               <py-home>/lib/pythonX.Y
+#         None of the C modules is compiled.
+#
+# AUTHOR (GitHub homepage):
+# http://github.com/wewei
+# 
+# CREDIT TO:
+# http://randomsplat.com/id5-cross-compiling-python-for-embedded-linux.html
+# http://latenitesoft.blogspot.com/2008/10/iphone-programming-tips-building-unix.html
+# https://github.com/cobbal/python-for-iphone
+#
+
+
+# Version information
+
+SOURCE_VERSION=2.7.3
+MIN_IOS_VERSION="5.0"
+
+
+# Library information
+
+LIBRARY_VERSION=${SOURCE_VERSION%.*}
+LIBRARY_NAME="libpython$LIBRARY_VERSION.a"
+LIBRARY_NAME_FOR_IPHONEOS="libpython$LIBRARY_VERSION.ios.a"
+LIBRARY_NAME_FOR_SIMULATOR="libpython$LIBRARY_VERSION.sim.a"
+
+
+# Resource information
+
+PATCH_NAME="Python-$SOURCE_VERSION-xcompile.patch"
+PATCH_URL="http://media.shazhouke.webfactional.com/python_ios/$PATCH_NAME"
+
+SOURCE_PACK_NAME="Python-$SOURCE_VERSION.tar.bz2"
+SOURCE_PACK_URL="http://python.org/ftp/python/$SOURCE_VERSION/$SOURCE_PACK_NAME"
+
+
+# Build information
+
+BUILD_FOLDER="Python-$SOURCE_VERSION"
+
+HOST_PYTHON="hostpython"
+HOST_PGEN="Parser/hostpgen"
+
+
+# To prepare the resource files
+
+function retrieve_file_if_not_exists ()
+{
+    local fileName=$(basename "$1")
+    if [ ! -e $fileName ]; then
+        curl -O $1
+    fi
+}
+
+function unpack_source_files()
+{
+    tar jxf $SOURCE_PACK_NAME
+}
+
+function prepare_source_files()
+{
+    retrieve_file_if_not_exists $PATCH_URL
+    retrieve_file_if_not_exists $SOURCE_PACK_URL
+    unpack_source_files
+}
+
+
+# To build the host utilites (host python, host pgen)
+
+function build_host_utilities()
+{
+    ./configure
+    make python.exe Parser/pgen
+}
+
+function rename_host_utilities()
+{
+    mv python.exe $HOST_PYTHON
+    mv Parser/pgen $HOST_PGEN
+}
+
+function generate_host_utilities()
+{
+    pushd $BUILD_FOLDER
+    if [[ ! -x $HOST_PYTHON || ! -x $HOST_PGEN ]]; then
+        build_host_utilities
+        rename_host_utilities
+        make distclean
+    fi
+    popd
+}
+
+
+# To apply the patch
+
+function apply_cross_compile_patch()
+{
+    pushd $BUILD_FOLDER
+    patch -p1 < ../$PATCH_NAME
+    popd
+}
+
+
+# To build the libraries
+
+function fix_libgcc_cannot_find_error()
+{
+    local sdkroot=$1
+    mkdir -p "extralibs"
+    ln -fs "$sdkroot/usr/lib/libgcc_s.1.dylib" extralibs/libgcc_s.10.4.dylib
+}
+
+function cross_compile_library()
+{
+    local sdkroot=$(xcodebuild -version -sdk "$sdk" Path)
+
+    local cc=$(xcrun -find -sdk "$sdk" llvm-gcc)
+    local cpp=$(xcrun -find -sdk "$sdk" cpp)
+    local cflags="-arch $arch -isysroot $sdkroot -miphoneos-version-min=$MIN_IOS_VERSION"
+    local ldflags="-arch $arch -isysroot $sdkroot -static-libgcc -miphoneos-version-min=$MIN_IOS_VERSION"
+
+    fix_libgcc_cannot_find_error $sdkroot
+    ldflags="$ldflags -Lextralibs/"
+
+    CC="$cc" \
+    CPP="$cpp" \
+    CFLAGS="$cflags" \
+    LDFLAGS="$ldflags" \
+        ./configure --disable-toolbox-glue --host=$arch-apple-darwin
+
+    HOSTPYTHON=$HOST_PYTHON \
+    HOSTPGEN=$HOST_PGEN \
+    CROSS_COMPILE_TARGET=yes \
+        make $LIBRARY_NAME
+}
+
+function generate_library_for_iphoneos()
+{
+    if [[ ! -e $LIBRARY_NAME_FOR_IPHONEOS ]]; then
+        pushd $BUILD_FOLDER
+
+        arch="armv7" \
+        sdk="iphoneos" \
+            cross_compile_library
+
+        mv $LIBRARY_NAME ../$LIBRARY_NAME_FOR_IPHONEOS
+        make distclean
+
+        popd
+    fi
+}
+
+function generate_library_for_simulator()
+{
+    if [[ ! -e $LIBRARY_NAME_FOR_SIMULATOR ]]; then
+        pushd $BUILD_FOLDER
+
+        arch="i386" \
+        sdk="iphonesimulator" \
+            cross_compile_library
+
+        mv $LIBRARY_NAME ../$LIBRARY_NAME_FOR_SIMULATOR
+        make distclean
+
+        popd
+    fi
+}
+
+
+# To generate the universal library
+
+function generate_universal_library()
+{
+    lipo -create \
+        $LIBRARY_NAME_FOR_IPHONEOS  \
+        $LIBRARY_NAME_FOR_SIMULATOR \
+        -output $LIBRARY_NAME
+}
+
+
+# The main entry
+
+function build_python_for_iOS()
+{
+    prepare_source_files
+    generate_host_utilities
+    apply_cross_compile_patch
+    generate_library_for_iphoneos
+    generate_library_for_simulator
+    generate_universal_library
+}
+
+build_python_for_iOS
+

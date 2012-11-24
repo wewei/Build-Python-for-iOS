@@ -1,0 +1,5 @@
+Python-*/
+Python-*.tar.bz2
+libpython*.a
+*~
+.DS_Store
