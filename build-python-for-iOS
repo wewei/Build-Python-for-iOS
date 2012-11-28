@@ -9,7 +9,7 @@
 # build a universal (for iphone-os and iphone-simulator) static library, libpythonX.Y.a.
 # The static library contains only the interpreter. In order to the the scripts run, you
 # still need to
-#       * Copy all the headers at $BUILD_FOLDER/Include to your project.
+#       * Copy all the headers at ./install/include/ to your project.
 #       * Copy all the necessary modules at $BUILD_FOLDER/Lib to some place your app can
 #         access at run time, and notify the interpreter about the path with Py_SetPythonHome
 #         before calling Py_Initialize.
@@ -144,8 +144,8 @@ function cross_compile_library()
     LDFLAGS="$ldflags" \
         ./configure --disable-toolbox-glue --host=$arch-apple-darwin
 
-    HOSTPYTHON=$HOST_PYTHON \
-    HOSTPGEN=$HOST_PGEN \
+    HOSTPYTHON=./$HOST_PYTHON \
+    HOSTPGEN=./$HOST_PGEN \
     CROSS_COMPILE_TARGET=yes \
         make $LIBRARY_NAME
 }
@@ -159,8 +159,11 @@ function generate_library_for_iphoneos()
         sdk="iphoneos" \
             cross_compile_library
 
-        mv $LIBRARY_NAME ../$LIBRARY_NAME_FOR_IPHONEOS
-        make distclean
+        cp $LIBRARY_NAME ../$LIBRARY_NAME_FOR_IPHONEOS
+
+		make inclinstall prefix="$PWD/../install"
+
+        #make distclean
 
         popd
     fi
@@ -175,7 +178,7 @@ function generate_library_for_simulator()
         sdk="iphonesimulator" \
             cross_compile_library
 
-        mv $LIBRARY_NAME ../$LIBRARY_NAME_FOR_SIMULATOR
+        cp $LIBRARY_NAME ../$LIBRARY_NAME_FOR_SIMULATOR
         make distclean
 
         popd
@@ -201,8 +204,8 @@ function build_python_for_iOS()
     prepare_source_files
     generate_host_utilities
     apply_cross_compile_patch
-    generate_library_for_iphoneos
     generate_library_for_simulator
+    generate_library_for_iphoneos
     generate_universal_library
 }
 
